@@ -21,3 +21,6 @@ __pycache__/
 # Misc
 *.log
 .env
+
+# Ralph Wiggum loop scratch (per-iteration logs)
+.ralph/
