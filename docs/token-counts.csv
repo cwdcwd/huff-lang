@@ -1,0 +1,4 @@
+example,huff_chars,huff_tokens,ts_chars,ts_tokens,ratio
+counter.huff,195,68,397,102,1.50
+greetings.huff,213,67,430,109,1.63
+hello.huff,60,15,108,24,1.60

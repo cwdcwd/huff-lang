@@ -1,0 +1,18 @@
+[package]
+name = "huff-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "huff-token-csv"
+path = "src/bin/token_csv.rs"
+
+[dependencies]
+huff-ast = { workspace = true }
+huff-parser = { workspace = true }
+huff-emit-ts = { workspace = true }
+tiktoken-rs = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

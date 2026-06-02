@@ -1,0 +1,6 @@
+svc FileService
+
+  err NotFound
+
+  op Get(id: u64) str!NotFound
+    "x"

@@ -1,0 +1,13 @@
+---
+source: packages/huff-tests/tests/examples.rs
+expression: ts
+---
+// prog HelloWorld
+
+export function Main(): void {
+  console.log("Hello World");
+}
+
+
+// entry point
+Main();

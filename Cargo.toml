@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "packages/huff-ast",
+    "packages/huff-parser",
+    "packages/huff-emit-ts",
+    "packages/huff-cli",
+    "packages/huff-tests",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+huff-ast = { path = "packages/huff-ast" }
+huff-parser = { path = "packages/huff-parser" }
+huff-emit-ts = { path = "packages/huff-emit-ts" }
+logos = "0.14"
+insta = "1.39"
+clap = { version = "4.5", features = ["derive"] }
+miette = { version = "7", features = ["fancy"] }
+thiserror = "1"
+tiktoken-rs = "0.5"

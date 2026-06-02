@@ -1,0 +1,456 @@
+//! Huff → TypeScript emitter (v0 walking skeleton).
+//!
+//! Mappings follow `docs/plans/ts-transpiler-walking-skeleton.md` §Phase 4.
+//! Errors are emitted as thrown exceptions for v0; this is a known shortcut
+//! to revisit when Result codegen lands.
+
+#![forbid(unsafe_code)]
+
+use huff_ast::*;
+use std::fmt::Write;
+
+pub fn emit(file: &File) -> String {
+    let mut e = Emitter::new();
+    e.emit_file(file);
+    e.out
+}
+
+struct Emitter {
+    out: String,
+    indent: usize,
+}
+
+impl Emitter {
+    fn new() -> Self {
+        Self {
+            out: String::new(),
+            indent: 0,
+        }
+    }
+
+    fn line(&mut self, s: &str) {
+        for _ in 0..self.indent {
+            self.out.push_str("  ");
+        }
+        self.out.push_str(s);
+        self.out.push('\n');
+    }
+    fn blank(&mut self) {
+        self.out.push('\n');
+    }
+
+    fn emit_file(&mut self, f: &File) {
+        match f.kind {
+            ProgKind::Prog => {
+                self.line(&format!("// prog {}", f.name));
+                self.blank();
+                self.emit_items(&f.items, /*inside_namespace=*/ false);
+                self.blank();
+                self.line("// entry point");
+                let main_arity = f
+                    .items
+                    .iter()
+                    .find_map(|it| match it {
+                        Item::Op(op) if op.name == "Main" => Some(op.params.len()),
+                        _ => None,
+                    })
+                    .unwrap_or(0);
+                if main_arity == 0 {
+                    self.line("Main();");
+                } else {
+                    self.line("Main(process.argv.slice(2));");
+                }
+            }
+            ProgKind::Mod => {
+                self.line(&format!("// mod {}", f.name));
+                self.line(&format!("export namespace {} {{", f.name));
+                self.indent += 1;
+                self.emit_items(&f.items, /*inside_namespace=*/ true);
+                self.indent -= 1;
+                self.line("}");
+            }
+        }
+    }
+
+    fn emit_items(&mut self, items: &[Item], inside_namespace: bool) {
+        for item in items {
+            match item {
+                Item::Use(u) => {
+                    self.line(&format!(
+                        "import * as {0} from './{0}';",
+                        u.name
+                    ));
+                }
+                Item::Err(e) => self.emit_err(e, inside_namespace),
+                Item::Type(t) => self.emit_type_decl(t, inside_namespace),
+                Item::State(s) => self.emit_state(s, inside_namespace),
+                Item::Op(o) => self.emit_op(o, inside_namespace),
+            }
+            self.blank();
+        }
+    }
+
+    fn export_kw(&self, inside_namespace: bool) -> &'static str {
+        if inside_namespace {
+            "export "
+        } else {
+            "export "
+        }
+    }
+
+    fn emit_err(&mut self, e: &ErrDecl, inside_namespace: bool) {
+        let exp = self.export_kw(inside_namespace);
+        if e.fields.is_empty() {
+            self.line(&format!(
+                "{exp}class {name} extends Error {{ constructor() {{ super({lit}); this.name = {lit}; }} }}",
+                exp = exp,
+                name = e.name,
+                lit = format!("\"{}\"", e.name),
+            ));
+        } else {
+            let params: Vec<String> = e
+                .fields
+                .iter()
+                .map(|f| format!("public {}: {}", f.name, ts_type(&f.ty)))
+                .collect();
+            let msg_arg = e
+                .fields
+                .iter()
+                .find(|f| f.name == "msg")
+                .map(|_| "msg".to_string())
+                .unwrap_or_else(|| format!("\"{}\"", e.name));
+            self.line(&format!(
+                "{exp}class {name} extends Error {{ constructor({params}) {{ super({msg}); this.name = \"{name}\"; }} }}",
+                exp = exp,
+                name = e.name,
+                params = params.join(", "),
+                msg = msg_arg,
+            ));
+        }
+    }
+
+    fn emit_type_decl(&mut self, t: &TypeDecl, inside_namespace: bool) {
+        let exp = self.export_kw(inside_namespace);
+        match t {
+            TypeDecl::Alias { name, target, .. } => {
+                self.line(&format!("{exp}type {} = {};", name, ts_type(target)));
+            }
+            TypeDecl::Product { name, fields, .. } => {
+                self.line(&format!("{exp}interface {} {{", name));
+                self.indent += 1;
+                for f in fields {
+                    self.line(&format!("{}: {};", f.name, ts_type(&f.ty)));
+                }
+                self.indent -= 1;
+                self.line("}");
+                // Convenience constructor — `Type(a, b)` in Huff becomes a
+                // function call in TS that builds the object positionally.
+                let params: Vec<String> = fields
+                    .iter()
+                    .map(|f| format!("{}: {}", f.name, ts_type(&f.ty)))
+                    .collect();
+                let inits: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+                self.line(&format!(
+                    "{exp}function {name}({params}): {name} {{ return {{ {inits} }}; }}",
+                    exp = exp,
+                    name = name,
+                    params = params.join(", "),
+                    inits = inits.join(", "),
+                ));
+            }
+        }
+    }
+
+    fn emit_state(&mut self, s: &StateDecl, _inside_namespace: bool) {
+        for f in &s.fields {
+            let val = self.expr_to_string(&f.init);
+            self.line(&format!("let {}: {} = {};", f.name, ts_type(&f.ty), val));
+        }
+    }
+
+    fn emit_op(&mut self, op: &OpDecl, inside_namespace: bool) {
+        let exp = self.export_kw(inside_namespace);
+        let params: Vec<String> = op
+            .params
+            .iter()
+            .map(|p| format!("{}: {}", p.name, ts_type(&p.ty)))
+            .collect();
+        let ret = match &op.return_type {
+            Some(t) => ts_type(t),
+            None => "void".to_string(),
+        };
+        self.line(&format!(
+            "{exp}function {}({}): {} {{",
+            op.name,
+            params.join(", "),
+            ret
+        ));
+        self.indent += 1;
+        self.emit_body(&op.body, op.return_type.is_some());
+        self.indent -= 1;
+        self.line("}");
+    }
+
+    fn emit_body(&mut self, stmts: &[Stmt], has_return: bool) {
+        let last = stmts.len().saturating_sub(1);
+        for (i, s) in stmts.iter().enumerate() {
+            let is_last = i == last;
+            match s {
+                Stmt::Let { name, ty, value, .. } => {
+                    let v = self.expr_to_string(value);
+                    match ty {
+                        Some(t) => self.line(&format!("const {}: {} = {};", name, ts_type(t), v)),
+                        None => self.line(&format!("const {} = {};", name, v)),
+                    }
+                }
+                Stmt::Effect { target, .. } => self.emit_effect(target),
+                Stmt::Pre { cond, err, .. } => {
+                    let c = self.expr_to_string(cond);
+                    let throw = match err {
+                        Some(ec) => {
+                            let args: Vec<String> = ec
+                                .args
+                                .iter()
+                                .map(|a| self.expr_to_string(a))
+                                .collect();
+                            format!("throw new {}({})", ec.name, args.join(", "))
+                        }
+                        None => "throw new Error(\"precondition failed\")".to_string(),
+                    };
+                    self.line(&format!("if (!({})) {{ {}; }}", c, throw));
+                }
+                Stmt::Expr { expr, .. } => {
+                    let v = self.expr_to_string(expr);
+                    if is_last && has_return {
+                        self.line(&format!("return {};", v));
+                    } else {
+                        self.line(&format!("{};", v));
+                    }
+                }
+            }
+        }
+    }
+
+    fn emit_effect(&mut self, t: &EffectTarget) {
+        match t {
+            EffectTarget::Call(expr) => {
+                let s = self.expr_to_string(expr);
+                // Special-case io.writeln / io.write / io.err -> console.{log,*}.
+                let mapped = map_effect_call(&s).unwrap_or(s);
+                self.line(&format!("{};", mapped));
+            }
+            EffectTarget::Assign { name, value } => {
+                let v = self.expr_to_string(value);
+                self.line(&format!("{} = {};", name, v));
+            }
+            EffectTarget::AddAssign { name, value } => {
+                let v = self.expr_to_string(value);
+                self.line(&format!("{} += {};", name, v));
+            }
+            EffectTarget::SubAssign { name, value } => {
+                let v = self.expr_to_string(value);
+                self.line(&format!("{} -= {};", name, v));
+            }
+        }
+    }
+
+    fn expr_to_string(&self, e: &Expr) -> String {
+        let mut s = String::new();
+        write_expr(&mut s, e);
+        s
+    }
+}
+
+fn map_effect_call(rendered: &str) -> Option<String> {
+    if let Some(rest) = rendered.strip_prefix("io.writeln(") {
+        Some(format!("console.log({}", rest))
+    } else if let Some(rest) = rendered.strip_prefix("io.write(") {
+        Some(format!("process.stdout.write({}", rest))
+    } else if let Some(rest) = rendered.strip_prefix("io.err(") {
+        Some(format!("console.error({}", rest))
+    } else {
+        None
+    }
+}
+
+fn write_expr(out: &mut String, e: &Expr) {
+    match e {
+        Expr::Lit(Lit::Int(n), _) => write!(out, "{}", n).unwrap(),
+        Expr::Lit(Lit::Bool(b), _) => write!(out, "{}", b).unwrap(),
+        Expr::Lit(Lit::Str(s), _) => {
+            write!(out, "\"").unwrap();
+            for c in s.chars() {
+                match c {
+                    '"' => out.push_str("\\\""),
+                    '\\' => out.push_str("\\\\"),
+                    '\n' => out.push_str("\\n"),
+                    '\t' => out.push_str("\\t"),
+                    '\r' => out.push_str("\\r"),
+                    c => out.push(c),
+                }
+            }
+            write!(out, "\"").unwrap();
+        }
+        Expr::Name(s, _) => out.push_str(s),
+        Expr::Call { callee, args, .. } => {
+            write_expr(out, callee);
+            out.push('(');
+            for (i, a) in args.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_expr(out, a);
+            }
+            out.push(')');
+        }
+        Expr::Member { target, field, .. } => {
+            write_expr(out, target);
+            out.push('.');
+            // .len → .length on TS strings/arrays.
+            if field == "len" {
+                out.push_str("length");
+            } else {
+                out.push_str(field);
+            }
+        }
+        Expr::Binary { op, lhs, rhs, .. } => {
+            out.push('(');
+            write_expr(out, lhs);
+            out.push(' ');
+            out.push_str(bin_op_str(*op));
+            out.push(' ');
+            write_expr(out, rhs);
+            out.push(')');
+        }
+        Expr::Unary { op, expr, .. } => {
+            out.push('(');
+            out.push_str(match op {
+                UnOp::Neg => "-",
+                UnOp::Not => "!",
+            });
+            write_expr(out, expr);
+            out.push(')');
+        }
+        Expr::Pipeline { source, stages, .. } => {
+            // Render `xs->map(f)->each(g)` as `xs.map(f).forEach(g)`.
+            write_expr(out, source);
+            for s in stages {
+                out.push('.');
+                let method = match s.name.as_str() {
+                    "each" => "forEach",
+                    other => other,
+                };
+                out.push_str(method);
+                out.push('(');
+                for (i, a) in s.args.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    write_expr(out, a);
+                }
+                out.push(')');
+            }
+        }
+        Expr::Closure { param, body, .. } => {
+            out.push('(');
+            out.push_str(param);
+            out.push_str(") => ");
+            write_expr(out, body);
+        }
+        Expr::Propagate { inner, .. } => {
+            // v0: propagation is a no-op; exceptions bubble naturally.
+            write_expr(out, inner);
+        }
+    }
+}
+
+fn bin_op_str(op: BinOp) -> &'static str {
+    match op {
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Mod => "%",
+        BinOp::Eq => "===",
+        BinOp::Ne => "!==",
+        BinOp::Lt => "<",
+        BinOp::Gt => ">",
+        BinOp::Le => "<=",
+        BinOp::Ge => ">=",
+        BinOp::And => "&&",
+        BinOp::Or => "||",
+    }
+}
+
+fn ts_type(t: &Type) -> String {
+    match t {
+        Type::Prim(p) => match p {
+            PrimType::Str => "string".into(),
+            PrimType::Bool => "boolean".into(),
+            PrimType::I32
+            | PrimType::U32
+            | PrimType::I64
+            | PrimType::U64
+            | PrimType::F32
+            | PrimType::F64 => "number".into(),
+            PrimType::Bytes => "Uint8Array".into(),
+        },
+        Type::Named(s) => s.clone(),
+        Type::List(inner) => format!("{}[]", ts_type(inner)),
+        Type::Optional(inner) => format!("({} | undefined)", ts_type(inner)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use huff_parser::parse_source;
+
+    fn emit_str(src: &str) -> String {
+        let f = parse_source(src).expect("parse");
+        emit(&f)
+    }
+
+    #[test]
+    fn hello_minimal_emits() {
+        let src = "prog HelloWorld\n  op Main()\n    !io.writeln(\"Hello World\")\n";
+        let ts = emit_str(src);
+        assert!(ts.contains("function Main()"), "ts:\n{}", ts);
+        assert!(ts.contains("console.log(\"Hello World\")"), "ts:\n{}", ts);
+        // Main has no params → entry call passes no args.
+        assert!(ts.contains("Main();"), "ts:\n{}", ts);
+    }
+
+    #[test]
+    fn main_with_args_gets_argv() {
+        let src = "prog X\n  op Main(args: []str)\n    !io.writeln(\"hi\")\n";
+        let ts = emit_str(src);
+        assert!(ts.contains("Main(process.argv.slice(2));"), "ts:\n{}", ts);
+    }
+
+    #[test]
+    fn product_type_gets_constructor() {
+        let src = "mod Greetings\n  type Greeting\n    to: str\n    msg: str\n  op Make(name: str) Greeting\n    Greeting(name, \"Hi \" + name)\n";
+        let ts = emit_str(src);
+        assert!(ts.contains("interface Greeting"), "{}", ts);
+        assert!(ts.contains("function Greeting"), "{}", ts);
+        assert!(ts.contains("function Make"), "{}", ts);
+        assert!(ts.contains("return Greeting(name,"), "{}", ts);
+    }
+
+    #[test]
+    fn pre_becomes_throw() {
+        let src = "prog X\n  err Bad\n  op M(n: u32)\n    pre n > 0 : Bad\n    !io.writeln(\"ok\")\n";
+        let ts = emit_str(src);
+        assert!(ts.contains("if (!((n > 0)))"), "{}", ts);
+        assert!(ts.contains("throw new Bad()"), "{}", ts);
+    }
+
+    #[test]
+    fn state_compound_assign() {
+        let src = "prog X\n  state n: u32 = 0\n  op M()\n    !n += 1\n";
+        let ts = emit_str(src);
+        assert!(ts.contains("let n: number = 0;"), "{}", ts);
+        assert!(ts.contains("n += 1;"), "{}", ts);
+    }
+}
