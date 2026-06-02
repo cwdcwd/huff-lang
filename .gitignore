@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (for future tooling)
+node_modules/
+dist/
+*.js.map
+
+# Python (for future tooling)
+__pycache__/
+*.pyc
+.venv/
+
+# Misc
+*.log
+.env
