@@ -93,6 +93,7 @@ pub struct StateField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpDecl {
     pub name: String,
+    pub is_async: bool,
     pub params: Vec<Param>,
     pub return_type: Option<Type>,
     pub error_type: Option<ErrorType>,
@@ -192,6 +193,11 @@ pub enum Expr {
     },
     /// `call()!` — propagate error.
     Propagate {
+        inner: Box<Expr>,
+        span: Span,
+    },
+    /// `~call()` — await an async call.
+    Await {
         inner: Box<Expr>,
         span: Span,
     },

@@ -47,18 +47,17 @@ impl Emitter {
                 self.emit_items(&f.items, /*inside_namespace=*/ false);
                 self.blank();
                 self.line("// entry point");
-                let main_arity = f
-                    .items
-                    .iter()
-                    .find_map(|it| match it {
-                        Item::Op(op) if op.name == "Main" => Some(op.params.len()),
-                        _ => None,
-                    })
-                    .unwrap_or(0);
-                if main_arity == 0 {
-                    self.line("Main();");
+                let main = f.items.iter().find_map(|it| match it {
+                    Item::Op(op) if op.name == "Main" => Some(op),
+                    _ => None,
+                });
+                let (arity, is_async) =
+                    main.map(|m| (m.params.len(), m.is_async)).unwrap_or((0, false));
+                let args = if arity == 0 { "" } else { "process.argv.slice(2)" };
+                if is_async {
+                    self.line(&format!("Main({}).catch((e) => {{ console.error(e); process.exit(1); }});", args));
                 } else {
-                    self.line("Main(process.argv.slice(2));");
+                    self.line(&format!("Main({});", args));
                 }
             }
             ProgKind::Mod => {
@@ -175,12 +174,18 @@ impl Emitter {
             .iter()
             .map(|p| format!("{}: {}", p.name, ts_type(&p.ty)))
             .collect();
-        let ret = match &op.return_type {
+        let inner_ret = match &op.return_type {
             Some(t) => ts_type(t),
             None => "void".to_string(),
         };
+        let ret = if op.is_async {
+            format!("Promise<{}>", inner_ret)
+        } else {
+            inner_ret
+        };
+        let async_kw = if op.is_async { "async " } else { "" };
         self.line(&format!(
-            "{exp}function {}({}): {} {{",
+            "{exp}{async_kw}function {}({}): {} {{",
             op.name,
             params.join(", "),
             ret
@@ -360,6 +365,11 @@ fn write_expr(out: &mut String, e: &Expr) {
         Expr::Propagate { inner, .. } => {
             // v0: propagation is a no-op; exceptions bubble naturally.
             write_expr(out, inner);
+        }
+        Expr::Await { inner, .. } => {
+            out.push_str("(await ");
+            write_expr(out, inner);
+            out.push(')');
         }
     }
 }

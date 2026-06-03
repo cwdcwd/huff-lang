@@ -1,0 +1,19 @@
+---
+source: packages/huff-tests/tests/examples.rs
+assertion_line: 41
+expression: ts
+---
+// prog AsyncDemo
+
+export async function Greet(name: string): Promise<string> {
+  return ("hello " + name);
+}
+
+export async function Main(): Promise<void> {
+  const g = (await Greet("world"));
+  console.log(g);
+}
+
+
+// entry point
+Main().catch((e) => { console.error(e); process.exit(1); });

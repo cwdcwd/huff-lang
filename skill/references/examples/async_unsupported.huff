@@ -1,4 +1,0 @@
-prog AsyncDemo
-
-  op~ Main()
-    !io.writeln("async")

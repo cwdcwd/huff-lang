@@ -56,7 +56,29 @@ op Upload(token: Token, name: str, data: bytes) FileId!ValidationFailed
 
 Same semantics. Fewer tokens, less ceremony — the transpiler handles everything below the meaning boundary.
 
-The walking-skeleton TS transpiler now emits TypeScript for the v0 subset, so the token-efficiency claim can be measured rather than asserted. Across the v0-subset examples checked into [skill/references/examples/](skill/references/examples), the emitted TS uses **1.5–1.6× as many BPE tokens (cl100k) as the Huff source** — see [docs/token-counts.csv](docs/token-counts.csv). That is meaningfully more compact, but well short of 4×; the larger ratio shows up only in the heavier `svc`/auth/async examples that v0 doesn't cover yet, and the README will be revised again once those phases land and we have honest numbers for them too.
+### Measured token efficiency
+
+The walking-skeleton TS transpiler now emits TypeScript for the v0 subset (incl. async), so the token-efficiency claim is measured rather than asserted. Two tokenizers are reported in [docs/token-counts.csv](docs/token-counts.csv):
+
+- **cl100k** — the GPT-4-era BPE (`tiktoken-rs::cl100k_base`). Free, offline, deterministic. A reasonable stand-in for "what an LLM sees".
+- **Claude** — Anthropic's [`messages/count_tokens`](https://docs.anthropic.com/en/build-with-claude/token-counting) endpoint, which reports the *actual* token count Claude uses. Available either via `ANTHROPIC_API_KEY` (Anthropic API) or `bedrock-runtime:CountTokens` (AWS Bedrock — what we use here).
+
+Ratios across the v0-subset examples ([hello, counter, greetings, async](skill/references/examples)):
+
+| tokenizer | ts/huff ratio |
+|---|---|
+| cl100k | **1.50–1.74×** |
+| Claude (Sonnet 4.6) | **1.23–1.58×** |
+
+So the emitted TypeScript is consistently more verbose than the Huff source — meaningfully so by Claude's own tokenizer — but well short of the 4× the manifesto used to assert. The 4× number was an *unmeasured* claim made before any transpiler existed; reality on the v0 subset is closer to **1.2–1.7×**.
+
+A few caveats worth keeping in mind:
+
+- The walking-skeleton emitter is verbose on purpose (header comments, blank lines, explicit entry-point call). A "minimum-token TS" mode would shrink the denominator further.
+- `count_tokens` is documented as an *estimate* — tiny system-added overhead may be folded in.
+- The high-end ratio (where Huff really shines) lives in the `svc`/auth/effect-typed examples that v0 doesn't transpile yet. We'll re-measure once those phases land instead of guessing.
+
+To regenerate the CSV: `cargo run -p huff-tests --bin huff-token-csv` (cl100k columns), then `scripts/count_claude_tokens.py` to fill the Claude columns via Bedrock.
 
 ---
 

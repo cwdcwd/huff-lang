@@ -286,9 +286,12 @@ impl<'a> Parser<'a> {
     fn parse_op(&mut self) -> Result<OpDecl, ParseError> {
         let start = self.span().start;
         self.expect(TokenKind::Op)?;
-        if matches!(self.peek(), TokenKind::Tilde) {
-            return Err(self.nys("async operations (op~)"));
-        }
+        let is_async = if matches!(self.peek(), TokenKind::Tilde) {
+            self.bump();
+            true
+        } else {
+            false
+        };
         let name = self.expect_ident("op name")?;
         if matches!(self.peek(), TokenKind::LAngle) {
             return Err(self.nys("generic operations"));
@@ -346,6 +349,7 @@ impl<'a> Parser<'a> {
 
         Ok(OpDecl {
             name,
+            is_async,
             params,
             return_type,
             error_type,
@@ -764,7 +768,14 @@ impl<'a> Parser<'a> {
                     span: Span::default(),
                 })
             }
-            TokenKind::Tilde => Err(self.nys("await expressions (~call)")),
+            TokenKind::Tilde => {
+                self.bump();
+                let inner = self.parse_postfix()?;
+                Ok(Expr::Await {
+                    inner: Box::new(inner),
+                    span: Span::default(),
+                })
+            }
             _ => self.parse_postfix(),
         }
     }
@@ -872,7 +883,6 @@ impl<'a> Parser<'a> {
             }
             TokenKind::LBracket => Err(self.nys("list literals")),
             TokenKind::LBrace => Err(self.nys("map literals")),
-            TokenKind::Tilde => Err(self.nys("await expressions (~call)")),
             TokenKind::Underscore => Err(self.nys("wildcard pattern (_)")),
             other => Err(self.err(&format!("expected expression, got {:?}", other))),
         }

@@ -13,6 +13,8 @@ huff-ast = { workspace = true }
 huff-parser = { workspace = true }
 huff-emit-ts = { workspace = true }
 tiktoken-rs = { workspace = true }
+ureq = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

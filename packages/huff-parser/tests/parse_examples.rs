@@ -30,11 +30,22 @@ fn counter_parses() {
 }
 
 #[test]
-fn async_unsupported_errors_cleanly() {
-    let src = read("async_unsupported.huff");
+fn async_parses() {
+    let src = read("async.huff");
+    let f = parse_source(&src).expect("async.huff should parse");
+    assert_eq!(f.name, "AsyncDemo");
+    let has_async_op = f.items.iter().any(|it| matches!(it, huff_ast::Item::Op(op) if op.is_async));
+    assert!(has_async_op, "expected at least one async op");
+}
+
+#[test]
+fn match_unsupported_errors_cleanly() {
+    let src = read("match_unsupported.huff");
     let err = parse_source(&src).expect_err("must fail");
     match err {
-        ParseError::NotYetSupported(msg) => assert!(msg.contains("async")),
+        ParseError::NotYetSupported(msg) => {
+            assert!(msg.contains("match"), "expected match error, got {:?}", msg)
+        }
         other => panic!("expected NotYetSupported, got {:?}", other),
     }
 }
