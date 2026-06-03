@@ -54,7 +54,9 @@ op Upload(token: Token, name: str, data: bytes) FileId!ValidationFailed
   id
 ```
 
-Same semantics. ~4× fewer tokens. The transpiler handles everything below the meaning boundary.
+Same semantics. Fewer tokens, less ceremony — the transpiler handles everything below the meaning boundary.
+
+The walking-skeleton TS transpiler now emits TypeScript for the v0 subset, so the token-efficiency claim can be measured rather than asserted. Across the v0-subset examples checked into [skill/references/examples/](skill/references/examples), the emitted TS uses **1.5–1.6× as many BPE tokens (cl100k) as the Huff source** — see [docs/token-counts.csv](docs/token-counts.csv). That is meaningfully more compact, but well short of 4×; the larger ratio shows up only in the heavier `svc`/auth/async examples that v0 doesn't cover yet, and the README will be revised again once those phases land and we have honest numbers for them too.
 
 ---
 
@@ -160,7 +162,7 @@ The following are scoped for future versions:
 - [ ] Sum types / discriminated unions (syntax sketched in examples)
 - [ ] Interface / protocol formal definitions
 - [ ] Effect typing in operation signatures
-- [ ] Reference transpiler implementation (TypeScript target)
+- [x] Reference transpiler implementation (TypeScript target) — v0 walking skeleton in [packages/](packages); covers `prog`/`mod` subset, defers `svc`/auth/async/generics
 - [ ] Formal verification of ownership model
 
 ---
