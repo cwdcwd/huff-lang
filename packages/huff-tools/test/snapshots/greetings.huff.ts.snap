@@ -1,7 +1,3 @@
----
-source: packages/huff-tests/tests/examples.rs
-expression: ts
----
 // mod Greetings
 export namespace Greetings {
   export interface Greeting {

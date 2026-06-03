@@ -8,15 +8,10 @@ Thumbs.db
 *.swp
 *.swo
 
-# Node (for future tooling)
+# Node (huff-tools validation & analysis)
 node_modules/
 dist/
 *.js.map
-
-# Python (for future tooling)
-__pycache__/
-*.pyc
-.venv/
 
 # Rust
 target/

@@ -1,0 +1,23 @@
+{
+  "name": "huff-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Validation harness + token-count analysis for the Huff TS transpiler. Drives the Rust huffc binary; not part of the transpiler itself.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "token-counts": "tsx src/token-counts.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@aws-sdk/client-bedrock-runtime": "^3.658.0",
+    "tiktoken": "^1.0.17"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.1"
+  }
+}

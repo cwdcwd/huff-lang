@@ -9,9 +9,9 @@ Stand up a Rust-implemented transpiler that consumes a *subset* of Huff v0.1 and
 ```
 huff-lang/
 ├── README.md
+├── Cargo.toml                      (workspace manifest — Rust crates only)
 ├── skill/                          (existing — untouched)
 └── packages/
-    ├── Cargo.toml                  (workspace manifest)
     ├── huff-ast/                   (AST node types, shared by parser + all emitters)
     │   ├── Cargo.toml
     │   └── src/lib.rs
@@ -25,12 +25,18 @@ huff-lang/
     ├── huff-emit-ts/               (AST → TypeScript source)
     │   ├── Cargo.toml
     │   └── src/lib.rs
-    └── huff-cli/                   (binary: huffc input.huff → input.ts)
-        ├── Cargo.toml
-        └── src/main.rs
+    ├── huff-cli/                   (binary: huffc input.huff → input.ts)
+    │   ├── Cargo.toml
+    │   └── src/main.rs
+    └── huff-tools/                 (TypeScript: validation harness + token-count analysis)
+        ├── package.json
+        ├── tsconfig.json
+        ├── vitest.config.ts
+        ├── src/                    (huffc.ts, token-counts.ts)
+        └── test/                   (validation.test.ts + snapshots/)
 ```
 
-`packages/` (not `crates/`) matches the monorepo framing and leaves room for non-Rust packages later (e.g. a JS wrapper, a vscode extension).
+`packages/` (not `crates/`) matches the monorepo framing — it holds the Rust transpiler crates and the TS analysis package side-by-side. The split is deliberate: **Rust owns the transpiler binaries; TypeScript owns the analysis and end-to-end validation** (so the same language we target is the one we measure with).
 
 ## Subset for v0 (the walking skeleton)
 
@@ -154,15 +160,18 @@ Deliverable: snapshot tests of generated TS for each v0-subset example. Bonus: p
 
 Deliverable: `cargo run -p huff-cli -- examples/hello.huff` writes a file that runs under `tsx` or `node --loader tsx`.
 
-### Phase 6 — Validation harness
+### Phase 6 — Validation harness (TypeScript)
 
-A small test binary (`packages/huff-tests/`) that:
-1. Reads each example from `skill/references/examples.md`.
-2. Runs it through the transpiler.
-3. For v0-subset examples, asserts emission succeeds and the output matches a snapshot.
-4. For out-of-subset examples, asserts emission fails with a specific "not yet supported" error so we track coverage growth.
+A vitest suite in `packages/huff-tools/test/` that:
+1. Reads each example from `skill/references/examples/`.
+2. Shells out to the `huffc` Rust binary via `cargo run -q -p huff-cli -- --stdout`.
+3. For v0-subset examples, asserts emission succeeds and the output matches a snapshot (`toMatchFileSnapshot`, one file per example).
+4. For out-of-subset examples, asserts emission fails with a `not yet supported: <feature>` error so we track coverage growth.
+5. For the headline DoD examples (`hello.huff`, `async.huff`), executes the emitted TS under `node` and asserts the program prints the expected output. End-to-end, not just emission-passes-typecheck.
 
-This is also where the **token-efficiency claim** finally gets measured: count tokens (BPE, via `tiktoken-rs`) on the Huff source vs the emitted TS, and emit a CSV. The 4× claim in the README has been an unsupported assertion until now.
+This is also where the **token-efficiency claim** finally gets measured: `packages/huff-tools/src/token-counts.ts` counts tokens with two tokenizers — `tiktoken` (cl100k_base, the GPT-4-era BPE) and Claude's actual `messages/count_tokens` endpoint reached via either `ANTHROPIC_API_KEY` or AWS Bedrock — and writes `docs/token-counts.csv`. The 4× claim in the README has been an unsupported assertion until now.
+
+The harness lives in TypeScript on purpose: TS is what the transpiler emits, so the same language we target runs the validation. The Rust side stays focused on lex/parse/emit.
 
 ## Open questions to settle before Phase 4
 
@@ -173,17 +182,23 @@ These don't block Phases 1–3 but need answers before the emitter is finished. 
 3. **Where does `state` live for a `prog`?** Module-level `let` works but pollutes the global scope. A wrapping IIFE is cleaner but harder to debug. v0 plan picks module-level; revisit if it bites.
 4. **Numeric type fidelity.** Huff has `i32`/`u32`/`i64`/`u64`/`f32`/`f64`. TS has only `number` and `bigint`. v0 plan collapses everything to `number`; this loses range-checking but matches what hand-written TS does. A future strict mode could emit `bigint` for 64-bit and `Brand<number, 'u32'>` for narrow ints.
 
-## Crate dependency choices
+## Dependency choices
 
-Keep these explicit so the plan isn't open-ended:
+**Rust crates** (transpiler):
 
 - `logos` for the raw lexer pass (fast, derive-based)
-- `insta` for snapshot tests
 - `clap` for the CLI
-- `miette` for error reporting with spans (downstream-friendly, prettier than `anyhow`)
-- `tiktoken-rs` for the token-counting harness in Phase 6
+- `thiserror` for parse-error enums
 
-No parser generator — recursive descent. No serde unless an emitter needs it.
+No parser generator — recursive descent. No serde unless an emitter needs it. No analysis-only deps in the workspace; those live in the TS package.
+
+**TS package** (analysis & validation, `packages/huff-tools/`):
+
+- `vitest` for the validation harness (file snapshots via `toMatchFileSnapshot`)
+- `tsx` for running TS scripts directly
+- `tiktoken` for cl100k_base BPE counts
+- `@anthropic-ai/sdk` for Anthropic-API token counts (when `ANTHROPIC_API_KEY` is set)
+- `@aws-sdk/client-bedrock-runtime` for Bedrock `CountTokens` (default path with SSO creds)
 
 ## Order of execution
 
@@ -198,8 +213,9 @@ Total walking-skeleton estimate: ~7 working days for someone fluent in Rust.
 
 ## Definition of done
 
-- `cargo test --workspace` passes.
-- `cargo run -p huff-cli -- skill/references/examples/hello.huff` produces TypeScript that runs and prints "Hello World".
-- A snapshot exists for each v0-subset example.
+- `cargo test --workspace` passes (transpiler unit tests, Rust side).
+- `npm --prefix packages/huff-tools test` passes (validation harness, TS side).
+- `cargo run -p huff-cli -- skill/references/examples/hello.huff` produces TypeScript that runs under `node` and prints "Hello World" — and the same for `async.huff` ("hello world"). The TS validation harness asserts both end-to-end.
+- A snapshot exists for each v0-subset example, in `packages/huff-tools/test/snapshots/<name>.huff.ts.snap`.
 - Out-of-subset examples produce a clear "not yet supported: <feature>" error, not a parser crash.
-- The token-count CSV is checked in, so the README's 4× claim is either confirmed or revised against real numbers.
+- `docs/token-counts.csv` is checked in with cl100k and Claude columns populated, so the README's 4× claim is either confirmed or revised against real numbers.

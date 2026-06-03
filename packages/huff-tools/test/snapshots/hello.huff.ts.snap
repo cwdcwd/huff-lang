@@ -1,7 +1,3 @@
----
-source: packages/huff-tests/tests/examples.rs
-expression: ts
----
 // prog HelloWorld
 
 export function Main(): void {

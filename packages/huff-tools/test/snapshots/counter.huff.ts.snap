@@ -1,7 +1,3 @@
----
-source: packages/huff-tests/tests/examples.rs
-expression: ts
----
 // prog Counter
 
 export class Empty extends Error { constructor() { super("Empty"); this.name = "Empty"; } }

@@ -4,13 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Huff is a language *design*, not yet an implementation. The repo contains:
+Huff is a language *design* with a v0 walking-skeleton TS transpiler. The repo contains:
 
 - `README.md` — manifesto and quick tour
 - `skill/SKILL.md` + `skill/references/` — the Claude skill that teaches an LLM to generate and reason about Huff IR
-- `docs/plans/` — design and implementation plans (e.g. the TS transpiler walking-skeleton plan)
+- `docs/plans/` — design and implementation plans (e.g. `ts-transpiler-walking-skeleton.md`)
+- `packages/huff-ast`, `huff-parser`, `huff-emit-ts`, `huff-cli` — the **Rust transpiler crates**. Lex → parse → AST → emit TypeScript. The CLI binary is `huffc`.
+- `packages/huff-tools` — the **TypeScript validation & analysis harness** (vitest). Drives the Rust binary against the example corpus, snapshots emitted TS, runs hello/async end-to-end under `node`, and produces `docs/token-counts.csv` with cl100k + Claude-tokenizer numbers.
 
-There is no compiler, transpiler, or runtime in this repo yet. There are no build, lint, or test commands. If you find yourself wanting to run `cargo` or `npm`, the corresponding package doesn't exist yet — check `docs/plans/` first to see whether it's planned and unbuilt.
+The split is deliberate: Rust owns the transpiler binaries; TypeScript owns the analysis and end-to-end validation (so the same language we target is the one we measure with). When working on the transpiler, use `cargo test --workspace`; when working on the harness or token analysis, use `npm --prefix packages/huff-tools test` or `npm --prefix packages/huff-tools run token-counts`.
+
+The v0 subset covers `prog`/`mod`, sync & async ops, errors as exceptions, primitives, lists, optionals, preconditions, effects, pipelines, and single-arg closures. Out-of-subset constructs (`svc`, auth, generics, sum types, match, shared ownership) are expected to error cleanly with `not yet supported: <feature>`.
 
 ## The governing design principle
 
@@ -42,4 +46,4 @@ Indentation is significant (2 spaces, Python-style). No braces, no semicolons.
 
 ## What's defined vs. deferred
 
-The README's status checklist is the source of truth for what's in v0.1 vs. future work. Sum types, formal interface definitions, effect typing in op signatures, the reference transpiler, and ownership-model verification are all explicitly future work. Examples sometimes use future-syntax (e.g. sum types in `examples.md` §4) — these are previews, not v0.1.
+The README's status checklist is the source of truth for what's in v0.1 vs. future work. Sum types, formal interface definitions, effect typing in op signatures, and ownership-model verification are all explicitly future work. The v0 walking-skeleton TS transpiler is shipped (`packages/`); see `docs/plans/ts-transpiler-walking-skeleton.md` for what it covers and what it defers. Examples sometimes use future-syntax (e.g. sum types in `examples.md` §4) — these are previews, not v0.1, and the transpiler will reject them with `not yet supported`.

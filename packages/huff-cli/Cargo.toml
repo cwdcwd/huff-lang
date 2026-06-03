@@ -13,4 +13,3 @@ huff-ast = { workspace = true }
 huff-parser = { workspace = true }
 huff-emit-ts = { workspace = true }
 clap = { workspace = true }
-miette = { workspace = true }
