@@ -1,0 +1,17 @@
+// mod Greetings
+export namespace Greetings {
+  export interface Greeting {
+    to: string;
+    msg: string;
+  }
+  export function Greeting(to: string, msg: string): Greeting { return { to, msg }; }
+
+  export function Make(name: string): Greeting {
+    return Greeting(name, ("Hello " + name));
+  }
+
+  export function MakeCustom(name: string, prefix: string): Greeting {
+    return Greeting(name, ((prefix + " ") + name));
+  }
+
+}

@@ -11,6 +11,7 @@ where the last iteration left off.
 ## Each iteration, do this
 
 1. **Orient.** Read the plan and run `cargo test --workspace 2>&1 | tail -40`
+   plus `npm --prefix packages/huff-tools test 2>&1 | tail -40`
    (if `packages/` doesn't exist yet, start at Phase 1). Look at recent git log
    to see what prior iterations did.
 2. **Pick the next smallest unit of work** that moves toward the Definition of
@@ -19,8 +20,11 @@ where the last iteration left off.
 3. **Implement it.** Match the crate layout, dependency choices, and v0 subset in
    the plan. Honor the deferred list — emit a clear "not yet supported: <feature>"
    error for out-of-subset constructs rather than half-implementing them.
-4. **Verify.** Build and test what you changed (`cargo build`, `cargo test -p <crate>`).
-   Do not declare progress on something that doesn't compile.
+4. **Verify.** Build and test what you changed:
+   - Rust changes: `cargo build`, `cargo test -p <crate>`.
+   - TS changes (validation harness or token-counts in `packages/huff-tools`):
+     `npm --prefix packages/huff-tools test`.
+   Do not declare progress on something that doesn't compile or that has no test coverage.
 5. **Stop** when you've completed one coherent, green unit of work. The loop will
    re-invoke you for the next.
 
@@ -38,11 +42,13 @@ where the last iteration left off.
 The work is complete ONLY when every item in the plan's "Definition of done" holds:
 
 - `cargo test --workspace` passes,
+- `npm --prefix packages/huff-tools test` passes (validation harness + end-to-end run),
 - `cargo run -p huff-cli -- skill/references/examples/hello.huff` produces TS that
-  runs and prints "Hello World",
-- a snapshot exists for each v0-subset example,
+  runs under `node` and prints "Hello World",
+- a snapshot exists for each v0-subset example in
+  `packages/huff-tools/test/snapshots/`,
 - out-of-subset examples produce a clear "not yet supported: <feature>" error,
-- the token-count CSV is checked in.
+- `docs/token-counts.csv` is checked in with cl100k and Claude columns.
 
 When and ONLY when you have verified all of the above in this iteration — by
 actually running the commands and seeing them pass — print the exact token

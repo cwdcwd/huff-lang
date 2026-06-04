@@ -1,0 +1,15 @@
+[package]
+name = "huff-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "huffc"
+path = "src/main.rs"
+
+[dependencies]
+huff-ast = { workspace = true }
+huff-parser = { workspace = true }
+huff-emit-ts = { workspace = true }
+clap = { workspace = true }

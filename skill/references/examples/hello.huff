@@ -1,0 +1,4 @@
+prog HelloWorld
+
+  op Main()
+    !io.writeln("Hello World")

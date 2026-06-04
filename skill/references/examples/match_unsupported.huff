@@ -1,0 +1,9 @@
+prog MatchDemo
+
+  op Sign(n: i32) str
+    n?
+      0 -> "zero"
+      _ -> "nonzero"
+
+  op Main()
+    !io.writeln(Sign(0))
