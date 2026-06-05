@@ -85,7 +85,7 @@ pub struct StateDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateField {
     pub name: String,
-    pub ty: Type,
+    pub ty: Option<Type>,
     pub init: Expr,
     pub span: Span,
 }
@@ -201,6 +201,19 @@ pub enum Expr {
         inner: Box<Expr>,
         span: Span,
     },
+    /// String interpolation: `"hello {name}, you are {age}"`.
+    /// Parts alternate between literal string segments and expressions.
+    Interpolation {
+        parts: Vec<InterpPart>,
+        span: Span,
+    },
+}
+
+/// A segment of a string interpolation expression.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterpPart {
+    Lit(String),
+    Expr(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

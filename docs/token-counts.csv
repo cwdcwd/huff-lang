@@ -1,5 +1,6 @@
 example,huff_chars,ts_chars,cl100k_huff_tokens,cl100k_ts_tokens,cl100k_ratio,claude_huff_tokens,claude_ts_tokens,claude_ratio
-async.huff,124,291,43,75,1.74,75,116,1.55
-counter.huff,195,397,68,102,1.50,103,149,1.45
-greetings.huff,213,430,67,109,1.63,100,158,1.58
-hello.huff,60,108,15,24,1.60,43,53,1.23
+async.huff,116,251,41,64,1.56,72,106,1.47
+counter.huff,182,350,63,91,1.44,96,139,1.45
+greetings.huff,210,406,65,101,1.55,98,150,1.53
+hello.huff,53,71,14,16,1.14,40,44,1.10
+todo.huff,733,1207,224,304,1.36,292,410,1.40

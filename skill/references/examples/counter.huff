@@ -2,12 +2,12 @@ prog Counter
 
   err Empty
 
-  state count: u32 = 0
+  state count = 0
 
   op Greet(name: str) str
-    "hi " + name
+    "hi {name}"
 
   op Main(args: []str)
     pre args.len > 0 : Empty
     !count += 1
-    !io.writeln(Greet("world"))
+    !log(Greet("world"))

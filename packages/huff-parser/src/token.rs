@@ -64,6 +64,9 @@ pub enum TokenKind {
     Int(i64),
     Float(f64),
     Str(String),
+    /// String with interpolation segments: alternating literal/ident parts.
+    /// e.g. `"hello {name}, age {age}"` → [Lit("hello "), Var("name"), Lit(", age "), Var("age")]
+    InterpStr(Vec<InterpSeg>),
     Ident(String),
 
     // Layout
@@ -71,4 +74,11 @@ pub enum TokenKind {
     Indent,
     Dedent,
     Eof,
+}
+
+/// A segment of an interpolated string token.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpSeg {
+    Lit(String),
+    Var(String),
 }

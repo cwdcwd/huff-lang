@@ -5,7 +5,7 @@ mod Greetings
     msg: str
 
   op Make(name: str) Greeting
-    Greeting(name, "Hello " + name)
+    Greeting(name, "Hello {name}")
 
   op MakeCustom(name: str, prefix: str) Greeting
-    Greeting(name, prefix + " " + name)
+    Greeting(name, "{prefix} {name}")

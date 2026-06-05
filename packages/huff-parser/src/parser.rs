@@ -244,8 +244,12 @@ impl<'a> Parser<'a> {
         if matches!(self.peek(), TokenKind::Ident(_)) {
             // single-line state
             let name = self.expect_ident("state name")?;
-            self.expect(TokenKind::Colon)?;
-            let ty = self.parse_type()?;
+            let ty = if matches!(self.peek(), TokenKind::Colon) {
+                self.bump();
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
             self.expect(TokenKind::Equals)?;
             let init = self.parse_expr()?;
             self.expect(TokenKind::Newline)?;
@@ -262,8 +266,12 @@ impl<'a> Parser<'a> {
             self.skip_newlines();
             while !matches!(self.peek(), TokenKind::Dedent | TokenKind::Eof) {
                 let name = self.expect_ident("state field name")?;
-                self.expect(TokenKind::Colon)?;
-                let ty = self.parse_type()?;
+                let ty = if matches!(self.peek(), TokenKind::Colon) {
+                    self.bump();
+                    Some(self.parse_type()?)
+                } else {
+                    None
+                };
                 self.expect(TokenKind::Equals)?;
                 let init = self.parse_expr()?;
                 self.expect(TokenKind::Newline)?;
@@ -848,6 +856,18 @@ impl<'a> Parser<'a> {
             TokenKind::Str(s) => {
                 self.bump();
                 Ok(Expr::Lit(Lit::Str(s), span))
+            }
+            TokenKind::InterpStr(segments) => {
+                self.bump();
+                use crate::token::InterpSeg;
+                let parts = segments
+                    .into_iter()
+                    .map(|seg| match seg {
+                        InterpSeg::Lit(s) => InterpPart::Lit(s),
+                        InterpSeg::Var(name) => InterpPart::Expr(Expr::Name(name, span)),
+                    })
+                    .collect();
+                Ok(Expr::Interpolation { parts, span })
             }
             TokenKind::True => {
                 self.bump();

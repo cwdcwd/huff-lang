@@ -1,19 +1,13 @@
-// prog Counter
-
 export class Empty extends Error { constructor() { super("Empty"); this.name = "Empty"; } }
-
-let count: number = 0;
+let count = 0;
 
 export function Greet(name: string): string {
-  return ("hi " + name);
+  return `hi ${name}`;
 }
 
 export function Main(args: string[]): void {
-  if (!((args.length > 0))) { throw new Empty(); }
+  if (!(args.length > 0)) { throw new Empty(); }
   count += 1;
   console.log(Greet("world"));
 }
-
-
-// entry point
 Main(process.argv.slice(2));

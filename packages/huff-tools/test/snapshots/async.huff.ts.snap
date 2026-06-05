@@ -1,14 +1,9 @@
-// prog AsyncDemo
-
 export async function Greet(name: string): Promise<string> {
-  return ("hello " + name);
+  return `hello ${name}`;
 }
 
 export async function Main(): Promise<void> {
-  const g = (await Greet("world"));
+  const g = await Greet("world");
   console.log(g);
 }
-
-
-// entry point
 Main().catch((e) => { console.error(e); process.exit(1); });

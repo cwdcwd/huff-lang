@@ -131,11 +131,14 @@ pub fn lex(src: &str) -> Result<Vec<Token>, LexError> {
             continue;
         }
 
-        // String literal.
+        // String literal (possibly with interpolation).
         if c == b'"' {
             let start = i;
             i += 1;
             let mut s = String::new();
+            let mut has_interp = false;
+            let mut segments: Vec<crate::token::InterpSeg> = Vec::new();
+
             while i < bytes.len() && bytes[i] != b'"' {
                 if bytes[i] == b'\\' && i + 1 < bytes.len() {
                     let esc = bytes[i + 1];
@@ -146,10 +149,29 @@ pub fn lex(src: &str) -> Result<Vec<Token>, LexError> {
                         b'\\' => '\\',
                         b'"' => '"',
                         b'0' => '\0',
+                        b'{' => '{',
                         other => other as char,
                     };
                     s.push(ch);
                     i += 2;
+                } else if bytes[i] == b'{' {
+                    // Interpolation: collect ident inside braces
+                    has_interp = true;
+                    // Push accumulated literal segment
+                    if !s.is_empty() {
+                        segments.push(crate::token::InterpSeg::Lit(std::mem::take(&mut s)));
+                    }
+                    i += 1; // skip {
+                    let var_start = i;
+                    while i < bytes.len() && bytes[i] != b'}' && bytes[i] != b'"' && bytes[i] != b'\n' {
+                        i += 1;
+                    }
+                    if i >= bytes.len() || bytes[i] != b'}' {
+                        return Err(LexError::UnterminatedString { offset: start });
+                    }
+                    let var_name = src[var_start..i].to_string();
+                    segments.push(crate::token::InterpSeg::Var(var_name));
+                    i += 1; // skip }
                 } else if bytes[i] == b'\n' {
                     return Err(LexError::UnterminatedString { offset: start });
                 } else {
@@ -161,8 +183,18 @@ pub fn lex(src: &str) -> Result<Vec<Token>, LexError> {
                 return Err(LexError::UnterminatedString { offset: start });
             }
             i += 1; // closing "
+
+            let kind = if has_interp {
+                // Push trailing literal segment if any
+                if !s.is_empty() {
+                    segments.push(crate::token::InterpSeg::Lit(s));
+                }
+                TokenKind::InterpStr(segments)
+            } else {
+                TokenKind::Str(s)
+            };
             out.push(Token {
-                kind: TokenKind::Str(s),
+                kind,
                 span: Span::new(start, i),
             });
             continue;

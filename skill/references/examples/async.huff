@@ -1,8 +1,8 @@
 prog AsyncDemo
 
   op~ Greet(name: str) str
-    "hello " + name
+    "hello {name}"
 
   op~ Main()
     let g = ~Greet("world")
-    !io.writeln(g)
+    !log(g)

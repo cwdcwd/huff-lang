@@ -42,11 +42,7 @@ impl Emitter {
     fn emit_file(&mut self, f: &File) {
         match f.kind {
             ProgKind::Prog => {
-                self.line(&format!("// prog {}", f.name));
-                self.blank();
                 self.emit_items(&f.items, /*inside_namespace=*/ false);
-                self.blank();
-                self.line("// entry point");
                 let main = f.items.iter().find_map(|it| match it {
                     Item::Op(op) if op.name == "Main" => Some(op),
                     _ => None,
@@ -61,7 +57,6 @@ impl Emitter {
                 }
             }
             ProgKind::Mod => {
-                self.line(&format!("// mod {}", f.name));
                 self.line(&format!("export namespace {} {{", f.name));
                 self.indent += 1;
                 self.emit_items(&f.items, /*inside_namespace=*/ true);
@@ -72,7 +67,14 @@ impl Emitter {
     }
 
     fn emit_items(&mut self, items: &[Item], inside_namespace: bool) {
-        for item in items {
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                // Single blank line between top-level items (ops/types), none before first
+                match item {
+                    Item::Op(_) | Item::Type(_) => self.blank(),
+                    _ => {}
+                }
+            }
             match item {
                 Item::Use(u) => {
                     self.line(&format!(
@@ -85,7 +87,6 @@ impl Emitter {
                 Item::State(s) => self.emit_state(s, inside_namespace),
                 Item::Op(o) => self.emit_op(o, inside_namespace),
             }
-            self.blank();
         }
     }
 
@@ -110,7 +111,17 @@ impl Emitter {
             let params: Vec<String> = e
                 .fields
                 .iter()
-                .map(|f| format!("public {}: {}", f.name, ts_type(&f.ty)))
+                .map(|f| format!("{}: {}", f.name, ts_type(&f.ty)))
+                .collect();
+            let assignments: Vec<String> = e
+                .fields
+                .iter()
+                .map(|f| format!("this.{0} = {0};", f.name))
+                .collect();
+            let field_decls: Vec<String> = e
+                .fields
+                .iter()
+                .map(|f| format!("{}: {}", f.name, ts_type(&f.ty)))
                 .collect();
             let msg_arg = e
                 .fields
@@ -119,11 +130,13 @@ impl Emitter {
                 .map(|_| "msg".to_string())
                 .unwrap_or_else(|| format!("\"{}\"", e.name));
             self.line(&format!(
-                "{exp}class {name} extends Error {{ constructor({params}) {{ super({msg}); this.name = \"{name}\"; }} }}",
+                "{exp}class {name} extends Error {{ {field_decls}; constructor({params}) {{ super({msg}); this.name = \"{name}\"; {assignments} }} }}",
                 exp = exp,
                 name = e.name,
+                field_decls = field_decls.join("; "),
                 params = params.join(", "),
                 msg = msg_arg,
+                assignments = assignments.join(" "),
             ));
         }
     }
@@ -163,7 +176,10 @@ impl Emitter {
     fn emit_state(&mut self, s: &StateDecl, _inside_namespace: bool) {
         for f in &s.fields {
             let val = self.expr_to_string(&f.init);
-            self.line(&format!("let {}: {} = {};", f.name, ts_type(&f.ty), val));
+            match &f.ty {
+                Some(t) => self.line(&format!("let {}: {} = {};", f.name, ts_type(t), val)),
+                None => self.line(&format!("let {} = {};", f.name, val)),
+            }
         }
     }
 
@@ -267,7 +283,15 @@ impl Emitter {
 }
 
 fn map_effect_call(rendered: &str) -> Option<String> {
-    if let Some(rest) = rendered.strip_prefix("io.writeln(") {
+    // New short forms (preferred)
+    if let Some(rest) = rendered.strip_prefix("log(") {
+        Some(format!("console.log({}", rest))
+    } else if let Some(rest) = rendered.strip_prefix("print(") {
+        Some(format!("process.stdout.write({}", rest))
+    } else if let Some(rest) = rendered.strip_prefix("err(") {
+        Some(format!("console.error({}", rest))
+    // Legacy io.* forms (still accepted)
+    } else if let Some(rest) = rendered.strip_prefix("io.writeln(") {
         Some(format!("console.log({}", rest))
     } else if let Some(rest) = rendered.strip_prefix("io.write(") {
         Some(format!("process.stdout.write({}", rest))
@@ -319,22 +343,29 @@ fn write_expr(out: &mut String, e: &Expr) {
             }
         }
         Expr::Binary { op, lhs, rhs, .. } => {
-            out.push('(');
+            let prec = bin_op_prec(*op);
+            let need_lhs_parens = matches!(lhs.as_ref(), Expr::Binary { op: inner_op, .. } if bin_op_prec(*inner_op) < prec);
+            let need_rhs_parens = matches!(rhs.as_ref(), Expr::Binary { op: inner_op, .. } if bin_op_prec(*inner_op) <= prec);
+            if need_lhs_parens { out.push('('); }
             write_expr(out, lhs);
+            if need_lhs_parens { out.push(')'); }
             out.push(' ');
             out.push_str(bin_op_str(*op));
             out.push(' ');
+            if need_rhs_parens { out.push('('); }
             write_expr(out, rhs);
-            out.push(')');
+            if need_rhs_parens { out.push(')'); }
         }
         Expr::Unary { op, expr, .. } => {
-            out.push('(');
             out.push_str(match op {
                 UnOp::Neg => "-",
                 UnOp::Not => "!",
             });
+            // Parens needed only if inner expr is binary
+            let need_parens = matches!(expr.as_ref(), Expr::Binary { .. });
+            if need_parens { out.push('('); }
             write_expr(out, expr);
-            out.push(')');
+            if need_parens { out.push(')'); }
         }
         Expr::Pipeline { source, stages, .. } => {
             // Render `xs->map(f)->each(g)` as `xs.map(f).forEach(g)`.
@@ -367,9 +398,34 @@ fn write_expr(out: &mut String, e: &Expr) {
             write_expr(out, inner);
         }
         Expr::Await { inner, .. } => {
-            out.push_str("(await ");
+            out.push_str("await ");
             write_expr(out, inner);
-            out.push(')');
+        }
+        Expr::Interpolation { parts, .. } => {
+            out.push('`');
+            for part in parts {
+                match part {
+                    InterpPart::Lit(s) => {
+                        // Escape backticks and ${} in literal segments
+                        for c in s.chars() {
+                            match c {
+                                '`' => out.push_str("\\`"),
+                                '$' => out.push_str("\\$"),
+                                '\\' => out.push_str("\\\\"),
+                                '\n' => out.push_str("\\n"),
+                                '\t' => out.push_str("\\t"),
+                                c => out.push(c),
+                            }
+                        }
+                    }
+                    InterpPart::Expr(e) => {
+                        out.push_str("${");
+                        write_expr(out, e);
+                        out.push('}');
+                    }
+                }
+            }
+            out.push('`');
         }
     }
 }
@@ -389,6 +445,17 @@ fn bin_op_str(op: BinOp) -> &'static str {
         BinOp::Ge => ">=",
         BinOp::And => "&&",
         BinOp::Or => "||",
+    }
+}
+
+fn bin_op_prec(op: BinOp) -> u8 {
+    match op {
+        BinOp::Or => 1,
+        BinOp::And => 2,
+        BinOp::Eq | BinOp::Ne => 3,
+        BinOp::Lt | BinOp::Gt | BinOp::Le | BinOp::Ge => 4,
+        BinOp::Add | BinOp::Sub => 5,
+        BinOp::Mul | BinOp::Div | BinOp::Mod => 6,
     }
 }
 
@@ -423,7 +490,7 @@ mod tests {
 
     #[test]
     fn hello_minimal_emits() {
-        let src = "prog HelloWorld\n  op Main()\n    !io.writeln(\"Hello World\")\n";
+        let src = "prog HelloWorld\n  op Main()\n    !log(\"Hello World\")\n";
         let ts = emit_str(src);
         assert!(ts.contains("function Main()"), "ts:\n{}", ts);
         assert!(ts.contains("console.log(\"Hello World\")"), "ts:\n{}", ts);
@@ -433,7 +500,7 @@ mod tests {
 
     #[test]
     fn main_with_args_gets_argv() {
-        let src = "prog X\n  op Main(args: []str)\n    !io.writeln(\"hi\")\n";
+        let src = "prog X\n  op Main(args: []str)\n    !log(\"hi\")\n";
         let ts = emit_str(src);
         assert!(ts.contains("Main(process.argv.slice(2));"), "ts:\n{}", ts);
     }
@@ -452,15 +519,29 @@ mod tests {
     fn pre_becomes_throw() {
         let src = "prog X\n  err Bad\n  op M(n: u32)\n    pre n > 0 : Bad\n    !io.writeln(\"ok\")\n";
         let ts = emit_str(src);
-        assert!(ts.contains("if (!((n > 0)))"), "{}", ts);
+        assert!(ts.contains("if (!(n > 0))"), "{}", ts);
         assert!(ts.contains("throw new Bad()"), "{}", ts);
     }
 
     #[test]
     fn state_compound_assign() {
-        let src = "prog X\n  state n: u32 = 0\n  op M()\n    !n += 1\n";
+        let src = "prog X\n  state n: u32 = 0\n  op M()\n    !n += 1\n    !log(\"done\")\n";
         let ts = emit_str(src);
         assert!(ts.contains("let n: number = 0;"), "{}", ts);
         assert!(ts.contains("n += 1;"), "{}", ts);
+    }
+
+    #[test]
+    fn string_interpolation_emits_template_literal() {
+        let src = "prog X\n  op Greet(name: str) str\n    \"hello {name}\"\n";
+        let ts = emit_str(src);
+        assert!(ts.contains("`hello ${name}`"), "ts:\n{}", ts);
+    }
+
+    #[test]
+    fn plain_string_stays_quoted() {
+        let src = "prog X\n  op M()\n    !log(\"no interp here\")\n";
+        let ts = emit_str(src);
+        assert!(ts.contains("\"no interp here\""), "ts:\n{}", ts);
     }
 }

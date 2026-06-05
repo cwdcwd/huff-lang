@@ -6,4 +6,4 @@ prog MatchDemo
       _ -> "nonzero"
 
   op Main()
-    !io.writeln(Sign(0))
+    !log(Sign(0))

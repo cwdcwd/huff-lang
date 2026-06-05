@@ -1,0 +1,36 @@
+prog TodoApp
+
+  err NotFound
+  err ValidationFailed(msg: str)
+
+  type Todo
+    id: u32
+    title: str
+    done: bool
+
+  state nextId = 1
+  state totalAdded = 0
+
+  op Validate(title: str) str!ValidationFailed
+    pre title.len > 0 : ValidationFailed("title required")
+    pre title.len <= 100 : ValidationFailed("title too long")
+    title
+
+  op MakeTodo(title: str) Todo
+    let t = Todo(nextId, Validate(title)!, false)
+    !nextId += 1
+    !totalAdded += 1
+    t
+
+  op Describe(t: Todo) str
+    "{t.id}: {t.title}"
+
+  op Summary() str
+    "{totalAdded} todos created, next id {nextId}"
+
+  op Main()
+    let t = MakeTodo("buy milk")
+    !log(Describe(t))
+    let t2 = MakeTodo("walk dog")
+    !log(Describe(t2))
+    !log(Summary())

@@ -1,0 +1,41 @@
+export class NotFound extends Error { constructor() { super("NotFound"); this.name = "NotFound"; } }
+export class ValidationFailed extends Error { msg: string; constructor(msg: string) { super(msg); this.name = "ValidationFailed"; this.msg = msg; } }
+
+export interface Todo {
+  id: number;
+  title: string;
+  done: boolean;
+}
+export function Todo(id: number, title: string, done: boolean): Todo { return { id, title, done }; }
+let nextId = 1;
+let totalAdded = 0;
+
+export function Validate(title: string): string {
+  if (!(title.length > 0)) { throw new ValidationFailed("title required"); }
+  if (!(title.length <= 100)) { throw new ValidationFailed("title too long"); }
+  return title;
+}
+
+export function MakeTodo(title: string): Todo {
+  const t = Todo(nextId, Validate(title), false);
+  nextId += 1;
+  totalAdded += 1;
+  return t;
+}
+
+export function Describe(t: Todo): string {
+  return `${t.id}: ${t.title}`;
+}
+
+export function Summary(): string {
+  return `${totalAdded} todos created, next id ${nextId}`;
+}
+
+export function Main(): void {
+  const t = MakeTodo("buy milk");
+  console.log(Describe(t));
+  const t2 = MakeTodo("walk dog");
+  console.log(Describe(t2));
+  console.log(Summary());
+}
+Main();
